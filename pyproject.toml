@@ -1,10 +1,8 @@
 
 [project]
 name = "pandas-type-detector"
-version = "0.9.0"
-authors = [
-    {name = "Joao Brito"},
-]
+version = "0.9.1"
+authors = [{name = "Joao Brito"}]
 description = "Automatic pandas DataFrame type detection with locale-aware parsing"
 readme = "README.md"
 requires-python = ">=3.7"
@@ -38,16 +36,14 @@ dev = [
 
 [project.urls]
 "Homepage" = "https://github.com/machado000/pandas-type-detector"
-"Bug Reports" = "https://github.com/machado000/pandas-type-detector/issues"
-"Source" = "https://github.com/machado000/pandas-type-detector"
+"Issues" = "https://github.com/machado000/pandas-type-detector/issues"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["pandas_type_detector*"]
+[tool.poetry]
+packages = [{ include = "pandas_type_detector"}]
 
 [tool.mypy]
 python_version = "3.7"
