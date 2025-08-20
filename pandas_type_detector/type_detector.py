@@ -538,9 +538,10 @@ class TypeDetectionPipeline:
                                 test_result.confidence == result.confidence):
                             df[column] = detector.convert(df[column])
                             new_dtype = df[column].dtype
-                            logging.info(
-                                f"{column:<15} {str(old_dtype):<10} {str(new_dtype):<10} {result.confidence:<4.2f}"
-                            )
+                            if new_dtype != old_dtype:
+                                logging.debug(
+                                    f"Column dtype change {column:<15} {str(old_dtype):<10} {str(new_dtype):<10} {result.confidence:<4.2f}"  # noqa
+                                )
                             break
                 except Exception as e:
                     if self.on_error == "raise":
