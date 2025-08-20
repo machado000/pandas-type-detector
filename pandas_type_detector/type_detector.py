@@ -123,9 +123,10 @@ class NumericDetector(TypeDetector):
     """Detector for numeric data (integers and floats)."""
 
     def __init__(self, locale_config: LocaleConfig, sample_size: int = 1000,
-                 min_confidence: float = 0.8):
+                 min_confidence: float = 0.8, on_error: str = "coerce"):
         super().__init__(locale_config, sample_size)
         self.min_confidence = min_confidence
+        self.on_error = on_error
 
     def detect(self, series: pd.Series) -> DetectionResult:
         """Detect numeric data with locale-aware parsing."""
@@ -171,25 +172,17 @@ class NumericDetector(TypeDetector):
         return DetectionResult(DataType.UNKNOWN, confidence, {})
 
     def convert(self, series: pd.Series) -> pd.Series:
-        """Convert series to numeric type."""
-        # Normalize all values
+        """Convert series to numeric type with error handling."""
         normalized = series.astype(str).apply(self._normalize_numeric_string)
-
-        # Convert to numeric
-        numeric_series = pd.to_numeric(normalized, errors='coerce')
-
-        # Log conversion issues
+        errors_opt = 'coerce' if self.on_error == 'coerce' else 'raise'
+        numeric_series = pd.to_numeric(normalized, errors=errors_opt)
         failed_mask = numeric_series.isna() & series.notna()
-        if failed_mask.any():
-            failed_values = series[failed_mask].unique()[:5]  # Show first 5
-            logging.warning(f"Could not convert {failed_mask.sum()} values to numeric. "
-                            f"Examples: {failed_values}")
-
-        # Determine if should be integer
+        error_values = series[failed_mask].unique().tolist() if failed_mask.any() else []
+        if error_values:
+            logging.debug(f"Numeric conversion errors: {error_values}")
         detection_result = self.detect(series)
-        if (detection_result.metadata.get("is_integer", False) and
-                numeric_series.notna().any()):
-            return numeric_series.astype("Int64")  # Nullable integer
+        if detection_result.metadata.get("is_integer", False) and numeric_series.notna().any():
+            return numeric_series.astype("Int64")
         else:
             return numeric_series.astype("float64")
 
@@ -292,9 +285,10 @@ class DateTimeDetector(TypeDetector):
     """Detector for datetime data."""
 
     def __init__(self, locale_config: LocaleConfig, sample_size: int = 1000,
-                 min_confidence: float = 0.7):
+                 min_confidence: float = 0.7, on_error: str = "coerce"):
         super().__init__(locale_config, sample_size)
         self.min_confidence = min_confidence
+        self.on_error = on_error
 
     def detect(self, series: pd.Series) -> DetectionResult:
         """Detect datetime data."""
@@ -341,11 +335,17 @@ class DateTimeDetector(TypeDetector):
         return DetectionResult(DataType.UNKNOWN, max(confidence, pattern_confidence), {})
 
     def convert(self, series: pd.Series) -> pd.Series:
-        """Convert series to datetime."""
+        """Convert series to datetime with error handling."""
+        errors_opt = 'coerce' if self.on_error == 'coerce' else 'raise'
         try:
-            return pd.to_datetime(series, errors='coerce', format='mixed')
+            dt_series = pd.to_datetime(series, errors=errors_opt, format='mixed')
+            failed_mask = dt_series.isna() & series.notna()
+            error_values = series[failed_mask].unique().tolist() if failed_mask.any() else []
+            if error_values:
+                logging.debug(f"Datetime conversion errors: {error_values}")
+            return dt_series
         except Exception as e:
-            logging.warning(f"DateTime conversion failed: {e}")
+            logging.debug(f"Datetime conversion exception: {e}")
             return series
 
     def _check_date_patterns(self, sample: pd.Series) -> float:
@@ -377,9 +377,10 @@ class BooleanDetector(TypeDetector):
     """Detector for boolean data."""
 
     def __init__(self, locale_config: LocaleConfig, sample_size: int = 1000,
-                 min_confidence: float = 0.8):
+                 min_confidence: float = 0.8, on_error: str = "coerce"):
         super().__init__(locale_config, sample_size)
         self.min_confidence = min_confidence
+        self.on_error = on_error
 
         # Define boolean indicators for different locales
         # Note: We exclude "1" and "0" to avoid conflicts with numeric data
@@ -411,12 +412,18 @@ class BooleanDetector(TypeDetector):
         return DetectionResult(DataType.UNKNOWN, confidence, {})
 
     def convert(self, series: pd.Series) -> pd.Series:
-        """Convert series to boolean."""
-        return series.astype(str).str.lower().str.strip().map(
+        """Convert series to boolean with error handling."""
+        mapped = series.astype(str).str.lower().str.strip().map(
             lambda x: True if x in self.true_values
             else False if x in self.false_values
             else None
-        ).astype("boolean")
+        )
+        bool_series = mapped.astype("boolean")
+        error_values = series[mapped.isna()].unique().tolist() if (
+            self.on_error == 'coerce' and mapped.isna().any()) else []
+        if error_values:
+            logging.debug(f"Boolean conversion errors: {error_values}")
+        return bool_series
 
     def _is_boolean_value(self, value: Any) -> bool:
         """Check if value represents a boolean."""
@@ -435,7 +442,7 @@ class TextDetector(TypeDetector):
         return DetectionResult(DataType.TEXT, 0.1, metadata)  # Low confidence fallback
 
     def convert(self, series: pd.Series) -> pd.Series:
-        """Convert series to string type."""
+        """Convert series to string type (no error handling needed)."""
         return series.astype(str)
 
 
@@ -467,9 +474,9 @@ class TypeDetectionPipeline:
 
         # Initialize detectors in order of specificity (most specific first)
         self.detectors = [
-            BooleanDetector(self.locale_config, sample_size),
-            DateTimeDetector(self.locale_config, sample_size),
-            NumericDetector(self.locale_config, sample_size),
+            BooleanDetector(self.locale_config, sample_size, on_error=self.on_error),
+            DateTimeDetector(self.locale_config, sample_size, on_error=self.on_error),
+            NumericDetector(self.locale_config, sample_size, on_error=self.on_error),
             TextDetector(self.locale_config, sample_size),  # Fallback
         ]
 
