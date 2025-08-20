@@ -6,13 +6,13 @@ using a strategy pattern with confidence scoring.
 """
 
 import logging
+import pandas as pd
 import re
+
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from enum import Enum
-
-import pandas as pd
+from typing import Optional, Dict, Any, List
 
 
 class DataType(Enum):
@@ -507,10 +507,9 @@ class TypeDetectionPipeline:
         Returns:
             DataFrame with optimized data types
         """
+
         df = df.copy()
         skip_columns = skip_columns or []
-
-        conversion_log = []
 
         for column in df.columns:
             if column in skip_columns:
@@ -519,6 +518,7 @@ class TypeDetectionPipeline:
             if df[column].empty:
                 continue
 
+            old_dtype = df[column].dtype
             # Detect type
             result = self.detect_column_type(df[column])
 
@@ -530,23 +530,14 @@ class TypeDetectionPipeline:
                         if (test_result.data_type == result.data_type and
                                 test_result.confidence == result.confidence):
                             df[column] = detector.convert(df[column])
-                            conversion_log.append({
-                                "column": column,
-                                "type": result.data_type.value,
-                                "confidence": result.confidence,
-                                "metadata": result.metadata
-                            })
+                            new_dtype = df[column].dtype
+                            logging.info(
+                                f"{column:<15} {str(old_dtype):<10} {str(new_dtype):<10} {result.confidence:<4.2f}"
+                            )
                             break
                 except Exception as e:
                     if self.on_error == "raise":
                         raise RuntimeError(f"Failed to convert column {column}: {e}") from e
-                    elif self.on_error == "coerce":
-                        logging.warning(f"Failed to convert column {column}: {e}")
-                    # For "ignore", we just continue without conversion
-
-        logging.info(f"Converted {len(conversion_log)} columns")
-        for log_entry in conversion_log:
-            logging.debug(f"  {log_entry['column']}: {log_entry['type']} "
-                          f"(confidence: {log_entry['confidence']:.2f})")
+                    # For 'coerce' and 'ignore', skip logging
 
         return df

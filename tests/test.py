@@ -11,9 +11,13 @@ This module contains all tests for the type detection system, including:
 - Excel compatibility
 """
 
+import logging
 import unittest
 import pandas as pd
+
 from pandas_type_detector import TypeDetectionPipeline, DataType, LOCALES
+
+logging.basicConfig(level=logging.INFO)
 
 
 class TestPTBRNumericDetection(unittest.TestCase):
