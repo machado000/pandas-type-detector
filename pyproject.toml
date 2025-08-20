@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pandas-type-detector"
+version = "0.9.0"
+authors = [
+    {name = "Joao Brito"},
+]
+description = "Automatic pandas DataFrame type detection with locale-aware parsing"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Utilities",
+]
+keywords = ["pandas", "dataframe", "type-detection", "data-cleaning", "locale", "pt-br", "excel"]
+dependencies = [
+    "pandas>=1.0.0",
+    "numpy>=1.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "flake8",
+    "mypy",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/machado000/pandas-type-detector"
+"Bug Reports" = "https://github.com/machado000/pandas-type-detector/issues"
+"Source" = "https://github.com/machado000/pandas-type-detector"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pandas_type_detector*"]
+
+[tool.mypy]
+python_version = "3.7"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
