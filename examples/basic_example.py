@@ -24,6 +24,7 @@ def main():
 
     # Let the algorithm detect and convert the remaining columns
     df = pipeline.fix_dataframe_dtypes(df, skip_columns=skip_columns)
+    df.to_csv('./examples/cleaned_example_data.csv', index=False)
 
     print("=== Main DataFrame Types (en-us locale) ===")
     print(df.dtypes)

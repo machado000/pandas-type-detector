@@ -596,6 +596,9 @@ class TypeDetectionPipeline:
         """
 
         df = df.copy()
+        # Convert all columns to string dtype first
+        for col in df.columns:
+            df[col] = df[col].astype(str)
         skip_columns = skip_columns or []
 
         for column in df.columns:
