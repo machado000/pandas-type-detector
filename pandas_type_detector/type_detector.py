@@ -123,68 +123,148 @@ class NumericDetector(TypeDetector):
     """Detector for numeric data (integers and floats)."""
 
     def __init__(self, locale_config: LocaleConfig, sample_size: int = 1000,
-                 min_confidence: float = 0.8, on_error: str = "coerce"):
+                 min_confidence: float = 0.8, max_text_ratio: float = 0.2,
+                 on_error: str = "coerce"):
         super().__init__(locale_config, sample_size)
         self.min_confidence = min_confidence
+        self.max_text_ratio = max_text_ratio
         self.on_error = on_error
 
+        # Define locale-aware placeholders
+        if locale_config.name == "pt-br":
+            self.known_placeholders = {
+                "error", "erro", "não encontrado", "nao encontrado",
+                "na", "n/a", "-", "--", "---", "", "null", "none"
+            }
+        else:  # Default to English
+            self.known_placeholders = {
+                "error", "not found", "na", "n/a", "-", "--", "---",
+                "", "null", "none", "missing"
+            }
+
+    def _classify_value(self, value: str) -> str:
+        """Classify each value as: numeric, placeholder, or text"""
+        if pd.isna(value):
+            return "placeholder"
+
+        value_clean = str(value).strip().lower()
+
+        # Check for known placeholders
+        if value_clean in self.known_placeholders:
+            return "placeholder"
+
+        # Define locale-aware numeric patterns
+        if self.locale.name == "pt-br":
+            numeric_patterns = [
+                r'^r\$\s*[\d.,]+$',           # R$ 123,45 or R$ 1.234,56
+                r'^[\d.,]+$',                 # 123,45 or 1.234,56
+                r'^\(\s*[\d.,]+\s*\)$',       # (123,45) - accounting format
+                r'^[\d.,]+\s*%$',             # 123,45%
+            ]
+        else:  # en-us
+            numeric_patterns = [
+                r'^\$\s*[\d,.]+$',            # $123.45 or $1,234.56
+                r'^[\d,.]+$',                 # 123.45 or 1,234.56
+                r'^\(\s*[\d,.]+\s*\)$',       # (123.45) - accounting format
+                r'^[\d,.]+\s*%$',             # 123.45%
+            ]
+
+        # Check if value matches any numeric pattern
+        if any(re.match(pattern, value_clean) for pattern in numeric_patterns):
+            return "numeric"
+
+        return "text"
+
     def detect(self, series: pd.Series) -> DetectionResult:
-        """Detect numeric data with locale-aware parsing."""
+        """Detect numeric data with enhanced validation and locale-aware parsing."""
         sample = self._get_sample(series)
 
         if len(sample) == 0:
             return DetectionResult(DataType.UNKNOWN, 0.0, {})
 
-        # Count successful numeric conversions
-        numeric_count = 0
-        placeholder_count = 0
-        is_integer_type = True
+        # Classify all values in the sample
+        classifications = [self._classify_value(str(value)) for value in sample]
 
-        for value in sample:
-            if self._is_placeholder(value):
-                placeholder_count += 1
-                continue
+        numeric_count = classifications.count("numeric")
+        placeholder_count = classifications.count("placeholder")
+        text_count = classifications.count("text")
 
-            normalized = self._normalize_numeric_string(str(value))
-            if normalized is not None:
-                try:
-                    float_val = float(normalized)
-                    numeric_count += 1
-                    # Check if it has decimal places
-                    if float_val != int(float_val):
-                        is_integer_type = False
-                except ValueError:
-                    pass
-
+        # Calculate ratios
         total_valid = numeric_count + placeholder_count
         confidence = total_valid / len(sample) if len(sample) > 0 else 0.0
+        text_ratio = text_count / len(sample) if len(sample) > 0 else 0.0
 
-        if confidence >= self.min_confidence:
-            data_type = DataType.INTEGER if is_integer_type else DataType.FLOAT
-            metadata = {
-                "locale": self.locale.name,
-                "is_integer": is_integer_type,
-                "valid_count": numeric_count,
-                "placeholder_count": placeholder_count
-            }
-            return DetectionResult(data_type, confidence, metadata)
+        # Enhanced validation: reject if too much pure text content
+        if confidence < self.min_confidence or text_ratio > self.max_text_ratio:
+            return DetectionResult(DataType.UNKNOWN, confidence, {
+                "numeric_count": numeric_count,
+                "placeholder_count": placeholder_count,
+                "text_count": text_count,
+                "text_ratio": text_ratio,
+                "rejection_reason": "too_much_text" if text_ratio > self.max_text_ratio else "low_confidence"
+            })
 
-        return DetectionResult(DataType.UNKNOWN, confidence, {})
+        # Determine if integer or float by checking numeric values
+        is_integer_type = True
+        successful_conversions = 0
+
+        for value in sample:
+            if self._classify_value(str(value)) == "numeric":
+                normalized = self._normalize_numeric_string(str(value))
+                if normalized is not None:
+                    try:
+                        float_val = float(normalized)
+                        successful_conversions += 1
+                        # Check if it has decimal places
+                        if float_val != int(float_val):
+                            is_integer_type = False
+                    except ValueError:
+                        pass
+
+        data_type = DataType.INTEGER if is_integer_type else DataType.FLOAT
+        metadata = {
+            "locale": self.locale.name,
+            "is_integer": is_integer_type,
+            "numeric_count": numeric_count,
+            "placeholder_count": placeholder_count,
+            "text_count": text_count,
+            "text_ratio": text_ratio
+        }
+        return DetectionResult(data_type, confidence, metadata)
 
     def convert(self, series: pd.Series) -> pd.Series:
-        """Convert series to numeric type with error handling."""
-        normalized = series.astype(str).apply(self._normalize_numeric_string)
-        errors_opt = 'coerce' if self.on_error == 'coerce' else 'raise'
-        numeric_series = pd.to_numeric(normalized, errors=errors_opt)
-        failed_mask = numeric_series.isna() & series.notna()
-        error_values = series[failed_mask].unique().tolist() if failed_mask.any() else []
-        if error_values:
-            logging.debug(f"Numeric conversion errors: {error_values}")
+        """Convert series to numeric type with enhanced error handling."""
+        def convert_value(value):
+            classification = self._classify_value(str(value))
+
+            if classification == "placeholder":
+                return None  # Will become NaN
+            elif classification == "numeric":
+                normalized = self._normalize_numeric_string(str(value))
+                if normalized is not None:
+                    try:
+                        return float(normalized)
+                    except ValueError:
+                        pass
+                # Fall through to error handling
+
+            # Handle text exceptions based on error strategy
+            if self.on_error == "coerce":
+                return None  # Convert to NaN
+            elif self.on_error == "raise":
+                raise ValueError(f"Cannot convert '{value}' to numeric")
+            else:  # ignore
+                return value
+
+        # Apply conversion
+        converted_series = series.apply(convert_value)
+
+        # Determine final dtype based on detection result
         detection_result = self.detect(series)
-        if detection_result.metadata.get("is_integer", False) and numeric_series.notna().any():
-            return numeric_series.astype("Int64")
+        if detection_result.metadata.get("is_integer", False):
+            return converted_series.astype("Int64")  # Nullable integer
         else:
-            return numeric_series.astype("float64")
+            return converted_series.astype("float64")
 
     def _is_placeholder(self, value: Any) -> bool:
         """Check if value is a placeholder for missing data."""
@@ -299,7 +379,7 @@ class DateTimeDetector(TypeDetector):
 
         # First check: do values look like PT-BR numbers? If so, probably not dates
         if self.locale.name == "pt-br":
-            numeric_detector = NumericDetector(self.locale, self.sample_size)
+            numeric_detector = NumericDetector(self.locale, self.sample_size, on_error=self.on_error)
             numeric_result = numeric_detector.detect(series)
             if numeric_result.confidence > 0.6:
                 # Probably numeric, not dates

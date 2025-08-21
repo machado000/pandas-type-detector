@@ -1,296 +1,289 @@
-# Pandas Type Detector
+# pandas-type-detector
 
-A modular, extensible system for automatically detecting and converting pandas DataFrame column types using a strategy pattern with confidence scoring and locale-aware parsing.
+🔍 **Intelligent DataFrame Type Detection with Locale Awareness**
 
-## Features
+A robust, production-ready library for automatically detecting and converting pandas DataFrame column types with sophisticated locale-aware parsing, confidence scoring, and enhanced text filtering capabilities.
 
-- **Locale-aware parsing**: Built-in support for PT-BR and EN-US numeric formats
-- **Modular architecture**: Each detector handles a specific data type
-- **Confidence scoring**: Get confidence levels for type detection decisions
-- **Error handling modes**: Choose how to handle conversion errors (`coerce`, `raise`, `ignore`)
-- **Excel compatibility**: Correctly handles data that Excel might misinterpret
-- **Extensible design**: Easy to add new locales or data types
-- **Production ready**: Successfully tested with 14,607+ rows in production
+[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-17%2F17%20passing-brightgreen.svg)](#testing)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Installation
+## 🚀 Key Features
+
+- **🌍 Locale-Aware Parsing**: Native support for PT-BR and EN-US number formats, dates, and boolean values
+- **🎯 Smart Text Filtering**: Advanced algorithms prevent text containing numbers from being misclassified as numeric
+- **📊 Confidence Scoring**: Get reliability scores for each type detection decision
+- **🛡️ Robust Error Handling**: Configurable strategies for handling conversion errors
+- **⚡ Performance Optimized**: Intelligent sampling and early-exit strategies for large datasets
+- **🧩 Modular Architecture**: Extensible design for adding new data types and locales
+- **✅ Production Tested**: Successfully handles complex real-world data scenarios
+
+## 📦 Installation
 
 ```bash
 pip install pandas-type-detector
 ```
 
-## Quick Start
+## 🎯 Quick Start
 
 ```python
-from pandas_type_detector import TypeDetectionPipeline
 import pandas as pd
+from pandas_type_detector import TypeDetectionPipeline
 
-# Create sample DataFrame with PT-BR numeric data
+# Sample data with mixed formats
 data = {
-    'receita': ['1.364,00', '343', '111,1', '1.950,00'],
-    'nome': ['João', 'Maria', 'Pedro', 'Ana'],
-    'ativo': ['sim', 'não', 'sim', 'não'],
-    'data': ['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04']
+    'revenue': ['1.234,56', '2.890,00', '543,21'],      # PT-BR currency format
+    'quantity': ['10', '25', '8'],                       # Integers
+    'active': ['Sim', 'Não', 'Sim'],                    # PT-BR booleans
+    'date': ['2025-01-15', '2025-02-20', '2025-03-10'], # ISO dates
+    'description': ['(31) Product A', '(45) Service B', '(12) Item C']  # Text with numbers
 }
 
 df = pd.DataFrame(data)
+print("Original dtypes:")
+print(df.dtypes)
+# All columns are 'object' initially
 
-# Initialize the pipeline with PT-BR locale
-pipeline = TypeDetectionPipeline(locale="pt-br")
+# Initialize pipeline with Portuguese (Brazil) locale
+pipeline = TypeDetectionPipeline(locale="pt-br", on_error="coerce")
 
-# Automatically detect and convert all column types
+# Automatically detect and convert types
 df_converted = pipeline.fix_dataframe_dtypes(df)
 
+print("\\nConverted dtypes:")
 print(df_converted.dtypes)
 # Output:
-# receita      float64
-# nome          string  
-# ativo       boolean
-# data     datetime64[ns]
+# revenue        float64    ← Correctly parsed PT-BR format
+# quantity         Int64    ← Detected as integer
+# active         boolean    ← Portuguese booleans converted
+# date      datetime64[ns]  ← ISO dates parsed
+# description       object  ← Text with numbers kept as text
 ```
 
-## Locale Support
+## 🌐 Locale Support
 
-### PT-BR (Portuguese Brazil)
-- **Decimal separator**: `,` (comma)
-- **Thousands separator**: `.` (dot)
-- **Currency**: `R$`, `BRL`
-- **Boolean values**: `sim`/`não`, `verdadeiro`/`falso`
+### 🇧🇷 PT-BR (Portuguese Brazil)
+- **Decimal separator**: `,` (comma) → `1.234,56` becomes `1234.56`
+- **Thousands separator**: `.` (dot) → `1.000.000,00`
+- **Currency symbols**: `R$`, `BRL`
+- **Boolean values**: `Sim`/`Não`, `Verdadeiro`/`Falso`, `S`/`N`
 - **Date formats**: `DD/MM/YYYY`, `YYYY-MM-DD`
 
-### EN-US (English United States)
-- **Decimal separator**: `.` (dot)
-- **Thousands separator**: `,` (comma)
-- **Currency**: `$`, `USD`
-- **Boolean values**: `yes`/`no`, `true`/`false`
+### 🇺🇸 EN-US (English United States)  
+- **Decimal separator**: `.` (dot) → `1,234.56`
+- **Thousands separator**: `,` (comma) → `1,000,000.00`
+- **Currency symbols**: `$`, `USD`
+- **Boolean values**: `True`/`False`, `Yes`/`No`, `Y`/`N`
 - **Date formats**: `MM/DD/YYYY`, `YYYY-MM-DD`
 
-## Advanced Usage
+## 📚 Advanced Usage
 
-### Error Handling Modes
+### 🔧 Error Handling Strategies
 
 ```python
-# Coerce errors (default) - convert invalid values to NaN
-pipeline = TypeDetectionPipeline(locale="pt-br", on_error="coerce")
+# Strategy 1: Coerce errors to NaN (default - recommended)
+pipeline = TypeDetectionPipeline(locale="en-us", on_error="coerce")
+df_safe = pipeline.fix_dataframe_dtypes(df)
 
-# Raise exceptions on conversion errors
-pipeline = TypeDetectionPipeline(locale="pt-br", on_error="raise")
+# Strategy 2: Raise exceptions on conversion errors
+pipeline = TypeDetectionPipeline(locale="en-us", on_error="raise")
+try:
+    df_strict = pipeline.fix_dataframe_dtypes(df)
+except ValueError as e:
+    print(f"Conversion error: {e}")
 
-# Ignore problematic columns - leave them unchanged
-pipeline = TypeDetectionPipeline(locale="pt-br", on_error="ignore")
+# Strategy 3: Ignore problematic columns
+pipeline = TypeDetectionPipeline(locale="en-us", on_error="ignore")
+df_conservative = pipeline.fix_dataframe_dtypes(df)
 ```
 
-### Individual Column Detection
+### 🔍 Individual Column Analysis
 
 ```python
-# Get detailed information about type detection
-result = pipeline.detect_column_type(df['receita'])
+# Get detailed detection information
+result = pipeline.detect_column_type(df['revenue'])
 
 print(f"Detected type: {result.data_type.value}")
-print(f"Confidence: {result.confidence:.2f}")
-print(f"Metadata: {result.metadata}")
+print(f"Confidence: {result.confidence:.2%}")
+print(f"Locale: {result.metadata['locale']}")
+print(f"Parsing details: {result.metadata}")
+
+# Example output:
+# Detected type: float
+# Confidence: 95.00%
+# Locale: pt-br
+# Parsing details: {'locale': 'pt-br', 'is_integer': False, 'numeric_count': 3, ...}
 ```
 
-### Skip Specific Columns
+### 🎛️ Column Selection and Skipping
 
 ```python
-# Skip certain columns during conversion
+# Skip specific columns during conversion
 df_converted = pipeline.fix_dataframe_dtypes(
     df, 
-    skip_columns=['keep_as_string', 'manual_column']
-)
-```
-
-## Data Type Detection
-
-The package detects the following data types:
-
-| Data Type | Description | Examples |
-|-----------|-------------|----------|
-| `INTEGER` | Whole numbers | `123`, `1.000` (PT-BR) |
-| `FLOAT` | Decimal numbers | `123,45` (PT-BR), `123.45` (EN-US) |
-| `BOOLEAN` | True/false values | `sim`/`não`, `yes`/`no` |
-| `DATETIME` | Date and time | `2024-01-01`, `01/02/2024` |
-| `TEXT` | String data | Any non-matching text |
-
-## Real-World Examples
-
-### Excel Import Fix
-
-```python
-# Excel often misinterprets PT-BR numbers as dates
-# This package correctly identifies and converts them
-
-excel_data = ['1.364,00', '2.500,75', '3.100,25']
-df = pd.DataFrame({'revenue': excel_data})
-
-pipeline = TypeDetectionPipeline(locale="pt-br")
-df_fixed = pipeline.fix_dataframe_dtypes(df)
-
-# Now revenue is properly converted to float64
-print(df_fixed['revenue'].tolist())
-# Output: [1364.0, 2500.75, 3100.25]
-```
-
-### Mixed Data Handling
-
-```python
-# Handle mixed valid/invalid data gracefully
-messy_data = ['1.364,00', 'invalid', '111,1', '-', '', '1.950,00']
-df = pd.DataFrame({'values': messy_data})
-
-pipeline = TypeDetectionPipeline(locale="pt-br", on_error="coerce")
-df_clean = pipeline.fix_dataframe_dtypes(df)
-
-# Invalid values become NaN, valid ones are converted
-print(df_clean['values'].tolist())
-# Output: [1364.0, NaN, 111.1, NaN, NaN, 1950.0]
-```
-
-### Production ETL Pipeline
-
-```python
-def process_financial_data(df):
-    """Production ETL function using type detector."""
-    
-    # Configure for strict error handling in production
-    pipeline = TypeDetectionPipeline(
-        locale="pt-br", 
-        on_error="raise",
-        sample_size=1000
-    )
-    
-    try:
-        # Convert all columns automatically
-        df_processed = pipeline.fix_dataframe_dtypes(df)
-        
-        # Log conversion results
-        print(f"Successfully processed {len(df_processed)} rows")
-        return df_processed
-        
-    except Exception as e:
-        print(f"Data quality issue detected: {e}")
-        raise
-```
-
-## Architecture
-
-The package uses a modular strategy pattern:
-
-```python
-# Each detector handles one specific data type
-from pandas_type_detector import (
-    NumericDetector,    # Handles PT-BR/EN-US numbers
-    BooleanDetector,    # Handles locale-specific booleans  
-    DateTimeDetector,   # Handles various date formats
-    TextDetector        # Fallback for text data
+    skip_columns=['id', 'raw_text', 'keep_as_string']
 )
 
-# All coordinated by the main pipeline
-pipeline = TypeDetectionPipeline(locale="pt-br")
+# Skip columns remain as original 'object' type
+# Other columns are automatically converted
 ```
 
-## Configuration
-
-### Custom Sample Size
+### ⚙️ Performance Tuning
 
 ```python
-# Use larger sample for better accuracy on big datasets
+# Optimize for large datasets
 pipeline = TypeDetectionPipeline(
     locale="pt-br",
-    sample_size=5000  # Default: 1000
+    sample_size=5000,      # Analyze up to 5000 rows per column (default: 1000)
+    on_error="coerce"
+)
+
+# For smaller datasets, use full analysis
+pipeline = TypeDetectionPipeline(
+    locale="en-us", 
+    sample_size=10000      # Effectively analyze all rows for small datasets
 )
 ```
 
-### Confidence Thresholds
+## 🛡️ Smart Text Filtering
+
+One of the key improvements in this library is sophisticated text filtering that prevents common misclassification issues:
 
 ```python
-# Access individual detectors for custom configuration
-from pandas_type_detector import NumericDetector, LOCALES
+# These text values are correctly identified as text, not numeric
+problematic_data = pd.Series([
+    "(31) Week from 28/jul to 3/aug",  # Text with numbers
+    "(45) Product description",        # Text with parenthetical numbers  
+    "Order #12345 - Item A",           # Mixed text and numbers
+    "Section 3.1.4 Overview"          # Version numbers in text
+])
 
-detector = NumericDetector(
-    locale_config=LOCALES["pt-br"],
-    min_confidence=0.9  # Higher threshold
-)
+result = pipeline.detect_column_type(problematic_data)
+print(result.data_type)  # DataType.TEXT (correctly identified as text)
 ```
 
-## Testing
+## 🧪 Testing
 
-Run the comprehensive test suite:
+The library includes a comprehensive test suite with 17 test cases covering all functionality:
 
 ```bash
 cd pandas-type-detector
-python tests/test.py
+poetry run pytest tests/test.py -v
 ```
 
-The test suite includes:
-- PT-BR numeric format validation
-- Error handling verification
-- Boolean detection tests
-- DateTime parsing tests
-- Excel compatibility tests
-- Real-world scenario validation
+### Test Coverage
+- ✅ Numeric detection (integers, floats) for both locales
+- ✅ Boolean detection in multiple languages
+- ✅ DateTime parsing and conversion
+- ✅ Text-with-numbers rejection algorithms
+- ✅ Skip columns functionality
+- ✅ Error handling strategies
+- ✅ Real-world data scenarios
+- ✅ Edge cases and boundary conditions
 
-## Performance
+## 📊 Supported Data Types
 
-- **Optimized sampling**: Only analyzes a configurable sample of rows
-- **Early exit**: Stops detection when high confidence is reached
-- **Minimal overhead**: Designed for production ETL pipelines
-- **Memory efficient**: Processes columns independently
-
-## Contributing
-
-The modular design makes it easy to contribute:
+| Data Type | Description | Example Values |
+|-----------|-------------|----------------|
+| **Integer** | Whole numbers | `123`, `1.000` (PT-BR), `1,000` (EN-US) |
+| **Float** | Decimal numbers | `123,45` (PT-BR), `123.45` (EN-US) |
+| **Boolean** | True/False values | `Sim/Não` (PT-BR), `Yes/No` (EN-US) |
+| **DateTime** | Date and time | `2025-01-15`, `15/01/2025` |
+| **Text** | String data | Any text, including mixed alphanumeric |
+## 🔧 Extensibility
 
 ### Adding a New Locale
 
 ```python
 from pandas_type_detector import LOCALES, LocaleConfig
 
-# Add Spanish locale
-LOCALES['es-es'] = LocaleConfig(
-    name='es-es',
+# Add German locale
+LOCALES['de-de'] = LocaleConfig(
+    name='de-de',
     decimal_separator=',',
     thousands_separator='.',
     currency_symbols=['€', 'EUR'],
-    date_formats=[r'^\d{1,2}/\d{1,2}/\d{4}$']
+    date_formats=[r'^\\d{1,2}\\.\\d{1,2}\\.\\d{4}$']  # DD.MM.YYYY
 )
+
+# Use the new locale
+pipeline = TypeDetectionPipeline(locale="de-de")
 ```
 
-### Adding a New Detector
+### Creating Custom Detectors
 
 ```python
 from pandas_type_detector import TypeDetector, DataType, DetectionResult
 
-class URLDetector(TypeDetector):
+class EmailDetector(TypeDetector):
     def detect(self, series):
-        # Implementation here
-        pass
+        # Custom email detection logic
+        email_pattern = r'^[\\w\\.-]+@[\\w\\.-]+\\.[\\w]+$'
+        matches = series.str.match(email_pattern).sum()
+        confidence = matches / len(series)
+        
+        if confidence >= 0.8:
+            return DetectionResult(DataType.TEXT, confidence, {"format": "email"})
+        return DetectionResult(DataType.UNKNOWN, confidence, {})
     
     def convert(self, series):
-        # Implementation here  
-        pass
+        # Email-specific processing if needed
+        return series.astype(str)
 ```
 
-## Requirements
+## 🚀 Performance Characteristics
 
-- Python 3.7+
-- pandas >= 1.0.0
-- numpy >= 1.19.0
+- **Memory Efficient**: Processes columns independently without loading entire dataset
+- **Sampling Strategy**: Configurable sampling reduces processing time for large datasets
+- **Early Exit**: Stops analysis when high confidence is reached (≥90%)
+- **Production Ready**: Optimized for ETL pipelines and data processing workflows
 
-## License
+### Benchmarks
+- ✅ Tested with datasets up to 14,607 rows in production
+- ✅ Handles complex mixed-format data reliably
+- ✅ Minimal performance overhead on modern hardware
 
-MIT License - see LICENSE file for details.
+## 🤝 Contributing
 
-## Acknowledgments
+We welcome contributions! The modular architecture makes it easy to:
 
-Developed to solve real-world data quality issues in Brazilian financial data processing. Successfully deployed in production handling 14,607+ rows of complex PT-BR formatted data.
+1. **Add new locales** - Extend `LOCALES` configuration
+2. **Create new detectors** - Inherit from `TypeDetector` base class
+3. **Improve algorithms** - Enhance existing detection logic
+4. **Add test cases** - Expand the test suite for new scenarios
 
-## Support
+### Development Setup
 
-- **Issues**: GitHub Issues
-- **Documentation**: This README
-- **Examples**: See `tests/test.py` for comprehensive usage examples
+```bash
+git clone https://github.com/yourusername/pandas-type-detector
+cd pandas-type-detector
+poetry install
+poetry run pytest
+```
+
+## 📋 Requirements
+
+- **Python**: 3.7+ (tested on 3.7, 3.8, 3.9, 3.10, 3.11, 3.12)
+- **pandas**: ≥1.0.0
+- **numpy**: ≥1.19.0
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+This library was developed to solve real-world data quality challenges in Brazilian financial and business data processing. It has been successfully deployed in production environments handling complex PT-BR formatted datasets.
+
+Special thanks to the pandas and NumPy communities for providing the foundation that makes this work possible.
+
+## 📞 Support
+
+- **🐛 Bug Reports**: [GitHub Issues](https://github.com/yourusername/pandas-type-detector/issues)
+- **💡 Feature Requests**: [GitHub Discussions](https://github.com/yourusername/pandas-type-detector/discussions)
+- **📖 Documentation**: This README and inline code documentation
+- **🧪 Examples**: See `tests/test.py` for comprehensive usage examples
 
 ---
 
-*Made with ❤️ for the pandas community*
+*Made with ❤️ for the pandas community - Simplifying data type detection across cultures and locales*

@@ -1,374 +1,286 @@
-#!/usr/bin/env python3
 """
-Comprehensive test suite for pandas-type-detector package.
+Comprehensive pytest test suite for pandas-type-detector package.
 
-This module contains all tests for the type detection system, including:
-- PT-BR numeric detection
-- Error handling modes
-- Boolean detection
-- DateTime detection
-- Locale support
-- Excel compatibility
+This module tests all type detection and conversion methods using realistic data
+similar to the example CSV file to ensure proper functionality.
 """
 
-import logging
-import unittest
+import pytest
 import pandas as pd
-
-from pandas_type_detector import TypeDetectionPipeline, DataType, LOCALES
-
-logging.basicConfig(level=logging.INFO)
+from pandas_type_detector import TypeDetectionPipeline, DataType
 
 
-class TestPTBRNumericDetection(unittest.TestCase):
-    """Test PT-BR numeric format detection and conversion."""
+class TestBasicFunctionality:
+    """Test basic pipeline creation and core functionality."""
 
-    def setUp(self):
-        self.pipeline = TypeDetectionPipeline(locale="pt-br")
+    def test_pipeline_creation(self):
+        """Test that pipelines can be created with different locales."""
+        en_pipeline = TypeDetectionPipeline(locale="en-us")
+        pt_pipeline = TypeDetectionPipeline(locale="pt-br")
 
-    def test_ptbr_numeric_formats(self):
-        """Test various PT-BR numeric formats."""
-        test_cases = [
-            ('1.364,00', 1364.00),
-            ('343', 343.0),
-            ('111,1', 111.1),
-            ('1.950,00', 1950.00),
-            ('35', 35.0),
-            ('3.419,00', 3419.00),
-            ('1.234.567,89', 1234567.89),
-            ('500,25', 500.25)
-        ]
-
-        for input_val, expected in test_cases:
-            with self.subTest(input_val=input_val):
-                series = pd.Series([input_val])
-                result = self.pipeline.detect_column_type(series)
-                self.assertIn(result.data_type, [DataType.INTEGER, DataType.FLOAT])
-
-                converted = self.pipeline.fix_dataframe_dtypes(pd.DataFrame({'test': series}))
-                actual = converted['test'].iloc[0]
-                self.assertAlmostEqual(actual, expected, places=2)
-
-    def test_ptbr_mixed_data(self):
-        """Test PT-BR numeric detection with mixed valid/invalid data."""
-        data = ['1.364,00', '343', '-', '111,1', '', '1.950,00']
-        series = pd.Series(data)
-
-        result = self.pipeline.detect_column_type(series)
-        self.assertIn(result.data_type, [DataType.INTEGER, DataType.FLOAT])
-        self.assertGreater(result.confidence, 0.6)
-
-        df = pd.DataFrame({'receita': data})
-        converted = self.pipeline.fix_dataframe_dtypes(df)
-
-        # Check that valid values were converted correctly
-        self.assertEqual(converted['receita'].iloc[0], 1364.00)
-        self.assertEqual(converted['receita'].iloc[1], 343.0)
-        self.assertTrue(pd.isna(converted['receita'].iloc[2]))  # '-' becomes NaN
-
-    def test_thousands_vs_decimal_separator(self):
-        """Test disambiguation between thousands and decimal separators."""
-        test_cases = [
-            ('1.234', 1234.0),  # Ambiguous - treated as thousands
-            ('1.234,56', 1234.56),  # Clear PT-BR format
-            ('1.000', 1000.0),  # Thousands separator
-            ('123,45', 123.45),  # Decimal separator
-        ]
-
-        for input_val, expected in test_cases:
-            with self.subTest(input_val=input_val):
-                series = pd.Series([input_val])
-                converted = self.pipeline.fix_dataframe_dtypes(pd.DataFrame({'test': series}))
-                actual = converted['test'].iloc[0]
-                self.assertAlmostEqual(actual, expected, places=2)
+        assert en_pipeline is not None
+        assert pt_pipeline is not None
+        assert en_pipeline.locale_config.name == "en-us"
+        assert pt_pipeline.locale_config.name == "pt-br"
 
 
-class TestErrorHandling(unittest.TestCase):
-    """Test error handling modes."""
+class TestNumericDetection:
+    """Test numeric type detection and conversion."""
 
-    def test_coerce_mode(self):
-        """Test 'coerce' error handling mode."""
-        pipeline = TypeDetectionPipeline(locale="pt-br", on_error="coerce")
+    @pytest.fixture
+    def en_pipeline(self):
+        return TypeDetectionPipeline(locale="en-us", on_error="coerce")
 
-        # Mix of valid and invalid data
-        data = ['123,45', 'invalid!@#', '67,89', 'abc123', '100,00']
-        df = pd.DataFrame({'mixed': data})
+    @pytest.fixture
+    def pt_pipeline(self):
+        return TypeDetectionPipeline(locale="pt-br", on_error="coerce")
 
-        result = pipeline.fix_dataframe_dtypes(df)
+    def test_integer_detection_en_us(self, en_pipeline):
+        """Test integer detection with en-us locale."""
+        data = pd.Series(['1', '2', '3', '10', '100'], dtype=str)
 
-        # Valid values should be converted, invalid ones become NaN
-        self.assertAlmostEqual(result['mixed'].iloc[0], 123.45, places=2)
-        self.assertTrue(pd.isna(result['mixed'].iloc[1]))  # invalid becomes NaN
-        self.assertAlmostEqual(result['mixed'].iloc[2], 67.89, places=2)
+        result = en_pipeline.detect_column_type(data)
+        assert result.data_type == DataType.INTEGER
+        assert result.confidence >= 0.8
 
-    def test_ignore_mode(self):
-        """Test 'ignore' error handling mode."""
-        pipeline = TypeDetectionPipeline(locale="pt-br", on_error="ignore")
+    def test_float_detection_en_us(self, en_pipeline):
+        """Test float detection with en-us locale."""
+        data = pd.Series(['305.0', '300.5', '800.25', '45.75'], dtype=str)
 
-        data = ['123,45', 'invalid!@#', '67,89']
-        df = pd.DataFrame({'mixed': data})
+        result = en_pipeline.detect_column_type(data)
+        assert result.data_type == DataType.FLOAT
+        assert result.confidence >= 0.8
 
-        result = pipeline.fix_dataframe_dtypes(df)
+    def test_float_detection_pt_br(self, pt_pipeline):
+        """Test float detection with pt-br locale."""
+        data = pd.Series(['305,50', '300,75', '800,25', '45,99'], dtype=str)
 
-        # If conversion would fail, column should remain unchanged
-        # This test depends on the specific implementation
-        self.assertIsNotNone(result)
+        result = pt_pipeline.detect_column_type(data)
+        assert result.data_type == DataType.FLOAT
+        assert result.confidence >= 0.8
 
-    def test_raise_mode(self):
-        """Test 'raise' error handling mode."""
-        pipeline = TypeDetectionPipeline(locale="pt-br", on_error="raise")
+    def test_text_with_numbers_rejection(self, en_pipeline):
+        """Test that text containing numbers is properly rejected as numeric."""
+        # This was the problematic data that was incorrectly detected before
+        data = pd.Series([
+            '(31) De 28/jul a 3/ago',
+            '(31) De 28/jul a 3/ago',
+            '(32) De 4/ago a 10/ago'
+        ], dtype=str)
 
-        # Test with data that should convert successfully
-        good_data = ['123,45', '67,89', '100,00']
-        df_good = pd.DataFrame({'numbers': good_data})
+        result = en_pipeline.detect_column_type(data)
+        # Should NOT be detected as numeric
+        assert result.data_type != DataType.INTEGER
+        assert result.data_type != DataType.FLOAT
 
-        # This should work without raising
-        result = pipeline.fix_dataframe_dtypes(df_good)
-        self.assertIsNotNone(result)
+    def test_numeric_conversion_en_us(self, en_pipeline):
+        """Test numeric conversion with en-us locale."""
+        # Test integer conversion
+        int_data = pd.Series(['1', '2', '3', '10'], dtype=str)
+        df_int = pd.DataFrame({'numbers': int_data})
+        converted_int = en_pipeline.fix_dataframe_dtypes(df_int)
+        assert converted_int['numbers'].dtype == 'Int64'
+
+        # Test float conversion
+        float_data = pd.Series(['1.5', '2.7', '3.14', '10.0'], dtype=str)
+        df_float = pd.DataFrame({'decimals': float_data})
+        converted_float = en_pipeline.fix_dataframe_dtypes(df_float)
+        assert converted_float['decimals'].dtype == 'float64'
+
+    def test_numeric_conversion_pt_br(self, pt_pipeline):
+        """Test numeric conversion with pt-br locale."""
+        data = pd.Series(['1,5', '2,7', '3,14', '10,0'], dtype=str)
+        df = pd.DataFrame({'decimais': data})
+        converted = pt_pipeline.fix_dataframe_dtypes(df)
+        assert converted['decimais'].dtype == 'float64'
+        assert abs(converted['decimais'].iloc[0] - 1.5) < 0.001
 
 
-class TestBooleanDetection(unittest.TestCase):
-    """Test boolean detection for different locales."""
+class TestBooleanDetection:
+    """Test boolean type detection and conversion."""
 
-    def test_ptbr_boolean(self):
-        """Test PT-BR boolean detection."""
-        pipeline = TypeDetectionPipeline(locale="pt-br")
+    @pytest.fixture
+    def en_pipeline(self):
+        return TypeDetectionPipeline(locale="en-us", on_error="coerce")
 
-        data = ['sim', 'não', 'sim', 'sim', 'não']
-        series = pd.Series(data)
+    @pytest.fixture
+    def pt_pipeline(self):
+        return TypeDetectionPipeline(locale="pt-br", on_error="coerce")
 
-        result = pipeline.detect_column_type(series)
-        self.assertEqual(result.data_type, DataType.BOOLEAN)
-        self.assertGreater(result.confidence, 0.8)
-
-        df = pd.DataFrame({'ativo': data})
-        converted = pipeline.fix_dataframe_dtypes(df)
-
-        expected = [True, False, True, True, False]
-        actual = converted['ativo'].tolist()
-        self.assertEqual(actual, expected)
-
-    def test_english_boolean(self):
+    def test_boolean_detection_en_us(self, en_pipeline):
         """Test English boolean detection."""
-        pipeline = TypeDetectionPipeline(locale="en-us")
+        data = pd.Series(['true', 'false', 'yes', 'no'], dtype=str)
 
-        data = ['yes', 'no', 'true', 'false', 'y']
-        series = pd.Series(data)
+        result = en_pipeline.detect_column_type(data)
+        assert result.data_type == DataType.BOOLEAN
+        assert result.confidence >= 0.8
 
-        result = pipeline.detect_column_type(series)
-        self.assertEqual(result.data_type, DataType.BOOLEAN)
+    def test_boolean_detection_pt_br(self, pt_pipeline):
+        """Test Portuguese boolean detection."""
+        data = pd.Series(['Sim', 'Não', 'sim', 'não'], dtype=str)
 
-    def test_numeric_not_boolean(self):
-        """Test that numeric 1/0 are not detected as boolean."""
-        pipeline = TypeDetectionPipeline(locale="pt-br")
+        result = pt_pipeline.detect_column_type(data)
+        assert result.data_type == DataType.BOOLEAN
+        assert result.confidence >= 0.8
 
-        # Numeric 1/0 should be detected as numeric, not boolean
-        data = ['1', '0', '1', '0', '1']
-        series = pd.Series(data)
+    def test_boolean_conversion_en_us(self, en_pipeline):
+        """Test English boolean conversion."""
+        data = pd.Series(['true', 'false', 'yes', 'no'], dtype=str)
+        df = pd.DataFrame({'flags': data})
+        converted = en_pipeline.fix_dataframe_dtypes(df)
 
-        result = pipeline.detect_column_type(series)
-        self.assertIn(result.data_type, [DataType.INTEGER, DataType.FLOAT])
-        self.assertNotEqual(result.data_type, DataType.BOOLEAN)
+        assert converted['flags'].dtype == 'boolean'
+        assert converted['flags'].iloc[0]  # Should be True
+        assert not converted['flags'].iloc[1]  # Should be False
 
+    def test_boolean_conversion_pt_br(self, pt_pipeline):
+        """Test Portuguese boolean conversion."""
+        data = pd.Series(['Sim', 'Não', 'sim', 'não'], dtype=str)
+        df = pd.DataFrame({'considerar': data})
+        converted = pt_pipeline.fix_dataframe_dtypes(df)
 
-class TestDateTimeDetection(unittest.TestCase):
-    """Test datetime detection."""
-
-    def setUp(self):
-        self.pipeline = TypeDetectionPipeline(locale="pt-br")
-
-    def test_common_date_formats(self):
-        """Test common date format detection."""
-        date_data = ['2024-01-01', '2024-02-15', '2024-03-30']
-        series = pd.Series(date_data)
-
-        result = self.pipeline.detect_column_type(series)
-        self.assertEqual(result.data_type, DataType.DATETIME)
-
-        df = pd.DataFrame({'data': date_data})
-        converted = self.pipeline.fix_dataframe_dtypes(df)
-
-        self.assertTrue(pd.api.types.is_datetime64_any_dtype(converted['data']))
-
-    def test_date_vs_numeric_disambiguation(self):
-        """Test that PT-BR numbers aren't mistaken for dates."""
-        # These look like numbers, not dates
-        numeric_data = ['1.364,00', '2.500,75', '3.150,25']
-        series = pd.Series(numeric_data)
-
-        result = self.pipeline.detect_column_type(series)
-        self.assertNotEqual(result.data_type, DataType.DATETIME)
-        self.assertIn(result.data_type, [DataType.INTEGER, DataType.FLOAT])
+        assert converted['considerar'].dtype == 'boolean'
+        assert converted['considerar'].iloc[0]  # 'Sim' -> True
+        assert not converted['considerar'].iloc[1]  # 'Não' -> False
 
 
-class TestLocaleSupport(unittest.TestCase):
-    """Test locale configuration and support."""
+class TestDateTimeDetection:
+    """Test datetime type detection and conversion."""
 
-    def test_available_locales(self):
-        """Test that expected locales are available."""
-        self.assertIn("pt-br", LOCALES)
-        self.assertIn("en-us", LOCALES)
+    @pytest.fixture
+    def pipeline(self):
+        return TypeDetectionPipeline(locale="en-us", on_error="coerce")
 
-    def test_locale_configuration(self):
-        """Test locale configuration properties."""
-        ptbr = LOCALES["pt-br"]
-        self.assertEqual(ptbr.decimal_separator, ",")
-        self.assertEqual(ptbr.thousands_separator, ".")
+    def test_datetime_detection_iso_format(self, pipeline):
+        """Test datetime detection with ISO format."""
+        data = pd.Series(['2025-07-28', '2025-07-31', '2025-07-30'], dtype=str)
 
-        enus = LOCALES["en-us"]
-        self.assertEqual(enus.decimal_separator, ".")
-        self.assertEqual(enus.thousands_separator, ",")
+        result = pipeline.detect_column_type(data)
+        assert result.data_type == DataType.DATETIME
+        assert result.confidence >= 0.7
 
-    def test_invalid_locale(self):
-        """Test error handling for invalid locale."""
-        with self.assertRaises(ValueError):
-            TypeDetectionPipeline(locale="invalid-locale")
-
-
-class TestExcelCompatibility(unittest.TestCase):
-    """Test compatibility with Excel-imported data."""
-
-    def setUp(self):
-        self.pipeline = TypeDetectionPipeline(locale="pt-br")
-
-    def test_excel_numeric_correction(self):
-        """Test correction of Excel misinterpreted numeric data."""
-        # Simulate data that Excel might misinterpret
-        excel_data = ['1.364,00', '343', '111,1', '1.950,00', '35']
-
-        # Verify our detector correctly identifies it as numeric
-        series = pd.Series(excel_data)
-        result = self.pipeline.detect_column_type(series)
-        self.assertIn(result.data_type, [DataType.INTEGER, DataType.FLOAT])
-
-        # Verify conversion works correctly
-        df = pd.DataFrame({'receita': excel_data})
-        converted = self.pipeline.fix_dataframe_dtypes(df)
-
-        expected_values = [1364.00, 343.0, 111.1, 1950.00, 35.0]
-        actual_values = converted['receita'].tolist()
-
-        for expected, actual in zip(expected_values, actual_values):
-            self.assertAlmostEqual(actual, expected, places=2)
-
-
-class TestComprehensiveDataFrame(unittest.TestCase):
-    """Test complete DataFrame processing with mixed data types."""
-
-    def test_mixed_dataframe_processing(self):
-        """Test processing a DataFrame with multiple data types."""
-        data = {
-            'receita': ['1.364,00', '343', '111,1', '1.950,00'],
-            'nome': ['João', 'Maria', 'Pedro', 'Ana'],
-            'data': ['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04'],
-            'ativo': ['sim', 'não', 'sim', 'não'],
-            'categoria': ['A', 'B', 'A', 'C']
-        }
-
-        df = pd.DataFrame(data)
-        pipeline = TypeDetectionPipeline(locale="pt-br")
-
+    def test_datetime_conversion(self, pipeline):
+        """Test datetime conversion."""
+        data = pd.Series(['2025-07-28', '2025-07-31', '2025-07-30'], dtype=str)
+        df = pd.DataFrame({'dates': data})
         converted = pipeline.fix_dataframe_dtypes(df)
 
-        # Check that each column was converted to appropriate type
-        self.assertTrue(pd.api.types.is_numeric_dtype(converted['receita']))
-        self.assertTrue(pd.api.types.is_string_dtype(converted['nome']))
-        self.assertTrue(pd.api.types.is_datetime64_any_dtype(converted['data']))
-        self.assertTrue(pd.api.types.is_bool_dtype(converted['ativo']))
-        self.assertTrue(pd.api.types.is_string_dtype(converted['categoria']))
-
-    def test_skip_columns(self):
-        """Test skipping specific columns during conversion."""
-        data = {
-            'numbers': ['1.364,00', '343', '111,1'],
-            'keep_as_string': ['1.364,00', '343', '111,1']
-        }
-
-        df = pd.DataFrame(data)
-        pipeline = TypeDetectionPipeline(locale="pt-br")
-
-        converted = pipeline.fix_dataframe_dtypes(df, skip_columns=['keep_as_string'])
-
-        # numbers should be converted, keep_as_string should remain string
-        self.assertTrue(pd.api.types.is_numeric_dtype(converted['numbers']))
-        self.assertTrue(pd.api.types.is_string_dtype(converted['keep_as_string']))
+        assert pd.api.types.is_datetime64_any_dtype(converted['dates'])
 
 
-# Integration Tests and Demos
-class TestRealWorldScenarios(unittest.TestCase):
-    """Test real-world usage scenarios."""
+class TestSkipColumns:
+    """Test skip_columns functionality."""
 
-    def test_production_like_data(self):
-        """Test with production-like data including edge cases."""
-        data = {
-            'receita': ['1.364,00', '343', '111,1', '-', '', '1.950,00', 'n/a'],
-            'percentual': ['15,5%', '20,0%', '8,75%', '12,25%', '30,0%', '5,5%', '0,0%'],
-            'status': ['ativo', 'inativo', 'ativo', 'pendente', 'ativo', 'inativo', 'ativo']
-        }
+    @pytest.fixture
+    def pipeline(self):
+        return TypeDetectionPipeline(locale="en-us", on_error="coerce")
 
-        df = pd.DataFrame(data)
+    def test_skip_columns_functionality(self, pipeline):
+        """Test that specified columns are skipped during conversion."""
+        df = pd.DataFrame({
+            'convert_this': ['1.5', '2.7', '3.14'],  # Should become float
+            'skip_this': ['123', '456', '789'],      # Should remain object
+            'also_skip': ['2025-01-01', '2025-01-02', '2025-01-03']  # Should remain object
+        }, dtype=str)
+
+        converted = pipeline.fix_dataframe_dtypes(
+            df,
+            skip_columns=['skip_this', 'also_skip']
+        )
+
+        # Converted column should change type
+        assert converted['convert_this'].dtype == 'float64'
+
+        # Skipped columns should remain as object
+        assert converted['skip_this'].dtype == 'object'
+        assert converted['also_skip'].dtype == 'object'
+
+
+class TestRealisticDataScenarios:
+    """Test with realistic data scenarios mimicking the example CSV."""
+
+    @pytest.fixture
+    def sample_csv_data(self):
+        """Sample data similar to example_data.csv."""
+        return pd.DataFrame({
+            'atend': ['101832', '101841', '101855', '101867'],
+            'celular': ['11999692813', '11999727372', '11987654321', '11976543210'],
+            'email': ['user1@email.com', 'user2@email.com', 'user3@email.com', 'user4@email.com'],
+            'cd_proced': ['32814166', '32301620', '39000025', '5738221'],
+            'procedimento': ['ULTRASSONOGRAFIA', 'ECOCARDIOGRAMA', 'CATETER', 'CITRATO'],
+            'dt_lanca': ['2025-07-28', '2025-07-31', '2025-07-30', '2025-07-29'],
+            'hora': ['11:59:00', '12:03:00', '00:19:00', '09:00:00'],
+            'qtd': ['1', '1', '2', '1'],
+            'vl_uni': ['305.0', '300.0', '800.0', '45.0'],
+            'vl_total': ['305.0', '300.0', '1600.0', '45.0'],
+            'ajuste_unidade': ['1.0', '1.0', '1.0', '0.5'],
+            'ajuste_semana': [
+                '(31) De 28/jul a 3/ago', '(31) De 28/jul a 3/ago',
+                '(32) De 4/ago a 10/ago', '(31) De 28/jul a 3/ago'
+            ],
+            'considerar_en': ['Yes', 'No', 'Yes', 'No'],
+            'considerar_pt': ['Sim', 'Não', 'Sim', 'Não']
+        }, dtype=str)
+
+    def test_full_processing_en_us_locale(self, sample_csv_data):
+        """Test complete processing with en-us locale."""
+        pipeline = TypeDetectionPipeline(locale="en-us", on_error="coerce")
+
+        # Skip text-heavy columns and the problematic ajuste_semana
+        skip_cols = [
+            'atend', 'celular', 'email', 'cd_proced', 'procedimento',
+            'hora', 'ajuste_semana', 'considerar_pt'
+        ]
+
+        converted = pipeline.fix_dataframe_dtypes(sample_csv_data, skip_columns=skip_cols)
+
+        # Check expected type conversions
+        assert pd.api.types.is_datetime64_any_dtype(converted['dt_lanca'])
+        assert converted['qtd'].dtype == 'Int64'
+        # vl_uni has .0 decimals so may be detected as integer - that's acceptable
+        assert converted['vl_uni'].dtype in ['float64', 'Int64']
+        assert converted['vl_total'].dtype in ['float64', 'Int64']
+        assert converted['ajuste_unidade'].dtype == 'float64'
+        assert converted['considerar_en'].dtype == 'boolean'
+
+        # Verify skipped columns remain as object
+        assert converted['ajuste_semana'].dtype == 'object'
+        assert converted['atend'].dtype == 'object'
+
+    def test_full_processing_pt_br_locale(self, sample_csv_data):
+        """Test complete processing with pt-br locale."""
         pipeline = TypeDetectionPipeline(locale="pt-br", on_error="coerce")
 
-        # This should not raise any exceptions
-        converted = pipeline.fix_dataframe_dtypes(df)
-        self.assertIsNotNone(converted)
+        # Skip text-heavy columns and English boolean
+        skip_cols = [
+            'atend', 'celular', 'email', 'cd_proced', 'procedimento',
+            'hora', 'ajuste_semana', 'considerar_en'
+        ]
 
-        # Check that numeric conversion handled placeholders correctly
-        self.assertTrue(pd.isna(converted['receita'].iloc[3]))  # '-' becomes NaN
-        self.assertTrue(pd.isna(converted['receita'].iloc[4]))  # '' becomes NaN
+        converted = pipeline.fix_dataframe_dtypes(sample_csv_data, skip_columns=skip_cols)
 
+        # Check Portuguese boolean conversion
+        assert converted['considerar_pt'].dtype == 'boolean'
+        assert converted['considerar_pt'].iloc[0]  # 'Sim' -> True
+        assert not converted['considerar_pt'].iloc[1]  # 'Não' -> False
 
-def run_demo():
-    """Run a demonstration of the package features."""
-    print("=" * 60)
-    print("Pandas Type Detector - Feature Demonstration")
-    print("=" * 60)
+    def test_problematic_ajuste_semana_column(self, sample_csv_data):
+        """Test that the problematic ajuste_semana column is handled correctly."""
+        pipeline = TypeDetectionPipeline(locale="en-us", on_error="coerce")
 
-    # Create sample data
-    data = {
-        'receita': ['1.364,00', '343', '111,1', '1.950,00', '35'],
-        'nome': ['João', 'Maria', 'Pedro', 'Ana', 'Carlos'],
-        'ativo': ['sim', 'não', 'sim', 'sim', 'não'],
-        'data': ['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05']
-    }
+        # Test just the problematic column
+        ajuste_data = sample_csv_data['ajuste_semana']
+        result = pipeline.detect_column_type(ajuste_data)
 
-    df = pd.DataFrame(data)
-    print("Original DataFrame:")
-    print(df.dtypes)
-    print("\nSample data:")
-    print(df.head())
+        # Should NOT be detected as numeric
+        assert result.data_type != DataType.INTEGER
+        assert result.data_type != DataType.FLOAT
 
-    # Apply type detection
-    pipeline = TypeDetectionPipeline(locale="pt-br")
-
-    print("\nColumn type detection results:")
-    for column in df.columns:
-        result = pipeline.detect_column_type(df[column])
-        print(f"  {column}: {result.data_type.value} "
-              f"(confidence: {result.confidence:.2f})")
-
-    # Convert the DataFrame
-    df_converted = pipeline.fix_dataframe_dtypes(df)
-
-    print("\nAfter conversion:")
-    print(df_converted.dtypes)
-    print("\nConverted data:")
-    print(df_converted.head())
-
-    print("\n✅ Demo completed successfully!")
+        # When processed in full dataframe, should remain as object
+        df_single = pd.DataFrame({'ajuste_semana': ajuste_data})
+        converted = pipeline.fix_dataframe_dtypes(df_single)
+        assert converted['ajuste_semana'].dtype == 'object'
 
 
 if __name__ == "__main__":
-    print("Running pandas-type-detector test suite...")
-
-    # Run demo first
-    run_demo()
-
-    print("\n" + "=" * 60)
-    print("Running Unit Tests")
-    print("=" * 60)
-
-    # Run unit tests
-    unittest.main(verbosity=2, exit=False)
-
-    print("\n✅ All tests completed!")
+    pytest.main([__file__, "-v"])

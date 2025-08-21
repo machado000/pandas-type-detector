@@ -1,9 +1,9 @@
 
 [project]
 name = "pandas-type-detector"
-version = "0.9.1"
+version = "1.0.0"
 authors = [{name = "Joao Brito"}]
-description = "Automatic pandas DataFrame type detection with locale-aware parsing"
+description = "Intelligent DataFrame type detection with sophisticated locale-aware parsing, confidence scoring, and smart text filtering"
 readme = "README.md"
 requires-python = ">=3.7"
 classifiers = [
@@ -17,11 +17,12 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Utilities",
 ]
-keywords = ["pandas", "dataframe", "type-detection", "data-cleaning", "locale", "pt-br", "excel"]
+keywords = ["pandas", "dataframe", "type-detection", "data-cleaning", "locale", "pt-br", "excel", "confidence-scoring", "text-filtering"]
 dependencies = [
     "pandas>=1.0.0",
     "numpy>=1.19.0",
@@ -44,6 +45,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 packages = [{ include = "pandas_type_detector"}]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.0,<8.0"
 
 [tool.mypy]
 python_version = "3.7"
