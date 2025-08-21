@@ -1,7 +1,7 @@
 
 [project]
 name = "pandas-type-detector"
-version = "1.0.0"
+version = "1.0.1"
 authors = [{name = "Joao Brito"}]
 description = "Intelligent DataFrame type detection with sophisticated locale-aware parsing, confidence scoring, and smart text filtering"
 readme = "README.md"
